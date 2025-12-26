@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ICSE Class 10 AI Tutor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>ICSE Class 10 AI Tutor</h1>
+      <p>Ask your Maths & Physics doubts. Get step-by-step ICSE-style explanations.</p>
+    </header>
+
+    <section class="controls">
+      <div class="control-group">
+        <label for="classLevel">Class</label>
+        <select id="classLevel">
+          <option value="10" selected>10</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="subject">Subject</label>
+        <select id="subject">
+          <option value="Maths">Maths</option>
+          <option value="Physics">Physics</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="chapter">Chapter</label>
+        <select id="chapter">
+          <!-- will be filled by script.js -->
+        </select>
+      </div>
+    </section>
+
+    <section class="chat-section">
+      <div id="chatWindow" class="chat-window">
+        <!-- messages go here -->
+      </div>
+
+      <div class="input-area">
+        <textarea id="questionInput" rows="3" placeholder="Type your doubt here..."></textarea>
+        <button id="sendBtn">Ask</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
