@@ -1,126 +1,86 @@
-# api/main.py
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from google import genai
-import os
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+import google.generativeai as genai
 
-# ---- config / env ----
+# ---------- Config ----------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY not set")
 
-ALLOWED_CLASSES = ["10"]
-ALLOWED_SUBJECTS = ["Maths", "Physics"]
-CHAPTERS = {
-    "Maths": [
-        "Commercial Mathematics",
-        "Algebra",
-        "Geometry",
-        "Mensuration",
-        "Trigonometry",
-    ],
-    "Physics": [
-        "Force, Work, Power and Energy",
-        "Light",
-        "Sound",
-        "Electricity and Magnetism",
-        "Heat",
-        "Modern Physics",
-    ],
-}
+genai.configure(api_key=GEMINI_API_KEY)
+MODEL_NAME = "gemini-1.5-flash"
 
-GEMINI_MODEL_NAME = "gemini-2.5-flash-lite"  # or model with free quota
+app = FastAPI()
 
-
-def build_prompt(class_level: str, subject: str, chapter: str, question: str) -> str:
-    system_part = f"""
-You are an expert ICSE tutor for Classes 9 and 10.
-Board: ICSE.
-Subjects: Mathematics, Physics, Chemistry, Biology.
-
-Rules:
-1. Stay within ICSE syllabus for the given class, subject and chapter.
-2. Explain like a Class 11 topper, simple and step-by-step.
-3. For numericals, always show working and final answer.
-4. For theory, keep 4–8 exam-focused lines unless student asks for more.
-5. If question is outside ICSE 9–10, say so politely and redirect.
-"""
-    user_part = f"""
-Class: {class_level}
-Subject: {subject}
-Chapter: {chapter}
-
-Student's question:
-{question}
-"""
-    return system_part.strip() + "\n\n" + user_part.strip()
-
-
-client = genai.Client(api_key=GEMINI_API_KEY)
-
-app = FastAPI(title="ICSE AI Tutor (Vercel)")
-
+# CORS so your frontend can call the API (same origin or others)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # you can restrict later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-class AskRequest(BaseModel):
-    class_level: str
-    subject: str
-    chapter: str
-    question: str
+# ---------- Static files ----------
+# Assumes index.html, script.js, styles.css are in ./static/
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-class AskResponse(BaseModel):
-    answer: str
-    meta: dict
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    """Serve the main frontend page."""
+    return FileResponse("static/index.html")
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+# ---------- API model ----------
 
+@app.post("/api/ask")
+async def ask_icse_question(payload: dict):
+    """
+    Expected JSON body:
+    {
+      "subject": "Math",
+      "chapter": "Quadratic Equations",
+      "question": "Solve x^2-5x+6=0"
+    }
+    """
+    subject = (payload.get("subject") or "General").strip()
+    chapter = (payload.get("chapter") or "General").strip()
+    question = (payload.get("question") or "").strip()
 
-@app.post("/api/ask", response_model=AskResponse)
-async def ask_icse_ai(payload: AskRequest):
-    if payload.class_level not in ALLOWED_CLASSES:
-        raise HTTPException(400, "Only Class 10 supported in v1.")
-    if payload.subject not in ALLOWED_SUBJECTS:
-        raise HTTPException(400, "Subject not supported in v1.")
-    if payload.chapter not in CHAPTERS.get(payload.subject, []):
-        raise HTTPException(400, "Chapter not supported for this subject.")
-    if not payload.question.strip():
-        raise HTTPException(400, "Question cannot be empty.")
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
 
-    prompt = build_prompt(
-        class_level=payload.class_level,
-        subject=payload.subject,
-        chapter=payload.chapter,
-        question=payload.question,
-    )
+    prompt = f"""
+You are an expert ICSE Class 10 tutor.
+
+Subject: {subject}
+Chapter: {chapter}
+
+Student Question:
+\"\"\"{question}\"\"\"
+
+Instructions:
+- Explain step by step in simple language.
+- Show working where relevant (math/physics/chemistry).
+- Keep the style similar to ICSE board exam solutions.
+- If important, mention common mistakes students make.
+"""
 
     try:
-        resp = client.models.generate_content(
-            model=GEMINI_MODEL_NAME,
-            contents=prompt,
-        )
-        answer = (resp.text or "").strip()
-        if not answer:
-            raise HTTPException(500, "Empty response from Gemini.")
+        model = genai.GenerativeModel(MODEL_NAME)
+        response = model.generate_content(prompt)
+        answer = response.text or "I could not generate an answer."
     except Exception as e:
-        raise HTTPException(500, f"Gemini error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gemini error: {e}")
 
-    return AskResponse(
-        answer=answer,
-        meta={
-            "class_level": payload.class_level,
-            "subject": payload.subject,
-            "chapter": payload.chapter,
-        },
-    )
+    return {"answer": answer}
+
+
+# Optional simple health check
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
